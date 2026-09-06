@@ -109,3 +109,5 @@ will filter the response with the defined keys
   * run while
   * run x times
 * more expansions
+* silent mode
+* terminal output mode
