@@ -1,4 +1,4 @@
-import requests, json
+import requests, json, argparse, sys
 
 from datetime import datetime
 from pathlib import Path
@@ -6,14 +6,12 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.columns import Columns
-from rich.syntax import Syntax
 from rich.json import JSON
 from rich.progress import Progress
 
 BASE_DIR = Path(__file__).parent
-OUTPUT_FOLDER = BASE_DIR / "Output"
 ROUTINES_DIR = BASE_DIR / "Routines"
+OUTPUT_FOLDER = ROUTINES_DIR / "Output"
 
 if not OUTPUT_FOLDER.exists():
     OUTPUT_FOLDER.mkdir()
@@ -26,37 +24,131 @@ OUTPUT_NAME = f"Run_{ts}.txt"
 
 console = Console()
 
-with Progress(transient=True) as progress:
-    task = progress.add_task("Running routines", total=len(list(ROUTINES_DIR.iterdir())))
-
-    for routine in ROUTINES_DIR.iterdir():
-        routineData:dict = json.loads(open(routine, mode='r').read())
-        progress.console.print(f"Working on Routine: {routineData["routine"]}")
-
-        try:
-            test = requests.request(
-                method=routineData["steps"][0]["request"]["method"],
-                url=routineData["steps"][0]["request"]["url"],
-                params=routineData["steps"][0]["request"]["params"],
-            )
-
-        except:
-            progress.console.print(f"Routine: {routineData["routine"]} failed!")
-            progress.advance(task)
-            continue
-
+def writeToOutput(routineData, test=None, status=None, error: str | None = None):
+    if test is not None:
         reqTable = Table.grid(padding=(0, 2))
-        reqTable.add_row("STATUS", f"[green]{test.status_code}[/green]")
+        reqTable.add_row("STATUS", f"[green]SUCESS[/green]")
+        reqTable.add_row("STATUS CODE", f"[green]{status}[/green]")
         reqTable.add_row("URL", routineData["steps"][0]["request"]["url"])
 
         resTable = Table.grid()
         resTable.add_row(Panel.fit(reqTable, title="Request"))
-        resTable.add_row(Panel.fit(JSON.from_data(test.json()), title="Response"))
+        resTable.add_row(Panel.fit(JSON.from_data(test), title="Response"))
 
-        with open(OUTPUT_FOLDER / OUTPUT_NAME, mode='a') as handle:
-            subCons = Console(file=handle)
-            subCons.print(Panel.fit(resTable, title=routineData["routine"]))
+    else:
+        reqTable = Table.grid(padding=(0, 2))
+        reqTable.add_row("STATUS", f"[green]FAILED[/green]")
+        reqTable.add_row("URL", routineData["steps"][0]["request"]["url"])
 
-        progress.advance(task)
+        resTable = Table.grid()
+        resTable.add_row(Panel.fit(reqTable, title="Request"))
+        resTable.add_row(Panel.fit(error.__str__(), title="Response"))
 
-console.print(f"Done! output: {OUTPUT_FOLDER / OUTPUT_NAME}")
+
+    with open(OUTPUT_FOLDER / OUTPUT_NAME, mode='a') as handle:
+        subCons = Console(file=handle)
+        subCons.print(Panel.fit(resTable, title=routineData["routine"]))
+
+def RunRoutine(name:str, all:bool=False):
+    todo:list[Path] | None = None
+
+    if not all:
+        tmpPath = ROUTINES_DIR / f"{name}.json"
+
+        if not tmpPath.exists():
+            console.print(f"Error: Routine {name} not found.")
+            return
+        
+        todo = [tmpPath]
+
+    if todo is None:
+        todo = [file for file in ROUTINES_DIR.iterdir() if file.is_file()]
+
+    with Progress(transient=True) as progress:
+        task = progress.add_task("Running routines", total=len(todo))
+
+        for routine in todo:
+            if routine.is_dir():
+                continue
+            
+            routineData:dict = json.loads(open(routine, mode='r').read())
+            progress.console.print(f"Working on Routine: {routineData["routine"]}")
+
+            try:
+                test = requests.request(
+                    method=routineData["steps"][0]["request"]["method"],
+                    url=routineData["steps"][0]["request"]["url"],
+                    params=routineData["steps"][0]["request"].get("params"),
+                    headers=routineData["steps"][0]["request"].get("headers"),
+                    auth=tuple(routineData["steps"][0]["request"].get("auth")) if "auth" in routineData["steps"][0]["request"] else None
+                )
+
+                display = routineData["steps"][0]["request"].get("display")
+
+                if display is not None:
+                    resDict = test.json()
+                    filterDict = {}
+
+                    if len(display) > 0:
+                        for field in display:
+                            filterDict[field] = resDict.get(field)
+
+                        if filterDict is not {}:
+                            writeToOutput(routineData, filterDict, status=test.status_code)
+                            continue
+
+                writeToOutput(routineData, test.json(), status=test.status_code)
+                    
+            except requests.exceptions.ConnectionError as e:
+                progress.console.print(f"Routine: {routineData["routine"]} failed!")
+                writeToOutput(routineData, error="Connection failed!")
+                progress.advance(task)
+                continue
+
+            except requests.exceptions.Timeout as e:
+                progress.console.print(f"Routine: {routineData["routine"]} failed!")
+                writeToOutput(routineData, error="Connection timeout!")
+                progress.advance(task)
+                continue
+
+            except Exception as e:
+                progress.console.print(f"Routine: {routineData["routine"]} failed!")
+                writeToOutput(routineData, error=e.__str__())
+                progress.advance(task)
+                continue
+            
+            progress.advance(task)
+
+def ListRoutines():
+    for routine in ROUTINES_DIR.iterdir():
+        if routine.is_dir():
+            continue
+
+        console.print(routine.stem)
+
+args = argparse.ArgumentParser("Routiner")
+subargs = args.add_subparsers(dest='subparser_name')
+
+runRoutine = subargs.add_parser('run', description='Runs either all routines or a specefied one')
+runGroup = runRoutine.add_mutually_exclusive_group()
+runGroup.add_argument('name', type=str, nargs='?', help='Name of the routine file to run without .json')
+runGroup.add_argument('-a', '--all', action="store_true", help='Flag to run all routines')
+
+listRoutines = subargs.add_parser('list', description='Lists all the routine files found in the routines folder')
+
+choice = args.parse_args()
+
+match choice.subparser_name:
+    case "run":
+        RunRoutine(choice.name, choice.all)
+        console.print(f"Done! output: {OUTPUT_FOLDER / OUTPUT_NAME}")
+
+    case "list":
+        ListRoutines()
+
+    case _:
+        console.log("action not found")
+
+
+sys.exit()
+
