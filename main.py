@@ -1,4 +1,4 @@
-import requests, json, argparse, sys
+import requests, json, argparse, sys, difflib
 
 from datetime import datetime
 from pathlib import Path
@@ -13,16 +13,31 @@ BASE_DIR = Path(__file__).parent
 ROUTINES_DIR = BASE_DIR / "Routines"
 OUTPUT_FOLDER = ROUTINES_DIR / "Output"
 
-if not OUTPUT_FOLDER.exists():
-    OUTPUT_FOLDER.mkdir()
-
-if not ROUTINES_DIR.exists():
-    ROUTINES_DIR.mkdir()
-
 ts = datetime.now().timestamp()
 OUTPUT_NAME = f"Run_{ts}.txt"
 
+REQUIRED_KEYS = {
+    "rone": [
+        "routine", "steps"
+    ],
+    "rtwo": [
+        "request"
+    ],
+    "rthree":[
+        "method", "url", "params"
+    ]
+}
+
 console = Console()
+
+def init_folders():
+    if not ROUTINES_DIR.exists():
+        ROUTINES_DIR.mkdir()
+
+    if not OUTPUT_FOLDER.exists():
+        OUTPUT_FOLDER.mkdir()
+
+
 
 def writeToOutput(routineData, test=None, status=None, error: str | None = None):
     if test is not None:
@@ -37,7 +52,14 @@ def writeToOutput(routineData, test=None, status=None, error: str | None = None)
 
     else:
         reqTable = Table.grid(padding=(0, 2))
-        reqTable.add_row("STATUS", f"[green]FAILED[/green]")
+        if status is not None and status == 200:
+            reqTable.add_row("STATUS", f"[red]Success[/red]")
+        else:
+            reqTable.add_row("STATUS", f"[red]FAILED[/red]")
+
+        if status is not None:
+            reqTable.add_row("STATUS CODE", f"[green]{status}[/green]")
+
         reqTable.add_row("URL", routineData["steps"][0]["request"]["url"])
 
         resTable = Table.grid()
@@ -50,6 +72,10 @@ def writeToOutput(routineData, test=None, status=None, error: str | None = None)
         subCons.print(Panel.fit(resTable, title=routineData["routine"]))
 
 def RunRoutine(name:str, all:bool=False):
+    if not ROUTINES_DIR.exists():
+        console.print("Routines folder not found, run init")
+        return
+
     todo:list[Path] | None = None
 
     if not all:
@@ -72,6 +98,7 @@ def RunRoutine(name:str, all:bool=False):
                 continue
             
             routineData:dict = json.loads(open(routine, mode='r').read())
+            
             progress.console.print(f"Working on Routine: {routineData["routine"]}")
 
             try:
@@ -96,9 +123,11 @@ def RunRoutine(name:str, all:bool=False):
                         if filterDict is not {}:
                             writeToOutput(routineData, filterDict, status=test.status_code)
                             continue
+                try:
+                    writeToOutput(routineData, test.json(), status=test.status_code)
+                except requests.exceptions.JSONDecodeError:
+                    writeToOutput(routineData, status=test.status_code, error="no json response")
 
-                writeToOutput(routineData, test.json(), status=test.status_code)
-                    
             except requests.exceptions.ConnectionError as e:
                 progress.console.print(f"Routine: {routineData["routine"]} failed!")
                 writeToOutput(routineData, error="Connection failed!")
@@ -119,14 +148,24 @@ def RunRoutine(name:str, all:bool=False):
             
             progress.advance(task)
 
+    console.print(f"Done! output: {OUTPUT_FOLDER / OUTPUT_NAME}")
+
 def ListRoutines():
+    if not ROUTINES_DIR.exists():
+        console.print("Routines folder not found, run init")
+        return
+
+    if len(list(ROUTINES_DIR.iterdir())) == 1:
+        console.print("Routines folder only containes output folder")
+        return
+
     for routine in ROUTINES_DIR.iterdir():
         if routine.is_dir():
             continue
 
         console.print(routine.stem)
 
-args = argparse.ArgumentParser("Routiner")
+args = argparse.ArgumentParser("Routiner", description="Run predifined API Routines with run, See all Routines with list, Create needed folders with init")
 subargs = args.add_subparsers(dest='subparser_name')
 
 runRoutine = subargs.add_parser('run', description='Runs either all routines or a specefied one')
@@ -136,19 +175,22 @@ runGroup.add_argument('-a', '--all', action="store_true", help='Flag to run all 
 
 listRoutines = subargs.add_parser('list', description='Lists all the routine files found in the routines folder')
 
+initFolders = subargs.add_parser("init", description="makes the routines and output folders")
+
 choice = args.parse_args()
 
 match choice.subparser_name:
     case "run":
         RunRoutine(choice.name, choice.all)
-        console.print(f"Done! output: {OUTPUT_FOLDER / OUTPUT_NAME}")
 
     case "list":
         ListRoutines()
 
-    case _:
-        console.log("action not found")
+    case "init":
+        init_folders()
+        console.print("initialized folders")
 
+    case _:
+        console.print("action not found")
 
 sys.exit()
-

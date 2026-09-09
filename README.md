@@ -4,6 +4,12 @@
 API Routines python script, will execute predifined API request and will show output and status
 
 ## Usage
+### Init
+```bash 
+python main.py init
+```
+Creates the Routines and Output folder. Output folder is in the Routines folder
+
 ### Run
 ```bash 
 python main.py run <name> | -a | --all
@@ -72,6 +78,21 @@ This is a simple functional single step Example. Where a GET request gets sent t
 ```
 This is a example of how a run gets logged if you use the example shown in the previous step
 
+```
+╭─────────── google-status ───────────╮
+│ ╭──────────── Request ────────────╮ │
+│ │ STATUS       Success            │ │
+│ │ STATUS CODE  200                │ │
+│ │ URL          https://google.com │ │
+│ ╰─────────────────────────────────╯ │
+│ ╭──── Response ────╮                │
+│ │ no json response │                │
+│ ╰──────────────────╯                │
+╰─────────────────────────────────────╯
+```
+
+If there is no json response the output will look like this 
+
 ## Routine defenitions
 ### The base
 ``` JSON
@@ -111,3 +132,6 @@ will filter the response with the defined keys
 * more expansions
 * silent mode
 * terminal output mode
+* Agent / LLM mode
+* .ENV support
+* Variables support
