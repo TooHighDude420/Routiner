@@ -96,9 +96,13 @@ def RunRoutine(name:str, all:bool=False):
         for routine in todo:
             if routine.is_dir():
                 continue
-            
-            routineData:dict = json.loads(open(routine, mode='r').read())
-            
+
+            try:
+                routineData:dict = json.loads(open(routine, mode='r').read())
+            except json.JSONDecodeError:
+                console.print(f"Routine {routine.stem}, is not defined properly see the readme for examples and key defenitions")
+                continue
+
             progress.console.print(f"Working on Routine: {routineData["routine"]}")
 
             try:
