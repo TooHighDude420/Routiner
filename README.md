@@ -121,6 +121,45 @@ display: [
 ```
 will filter the response with the defined keys
 
+example
+```json
+{
+  "routine": "check-weather",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://api.open-meteo.com/v1/forecast",
+        "params": {
+          "latitude": 52.09,
+          "longitude": 5.89,
+          "current": "temperature_2m"
+        },
+        "display":[
+            "latitude"
+        ]
+      }
+    }
+  ]
+}
+
+```
+```
+╭───────────────────── check-weather ─────────────────────╮
+│ ╭────────────────────── Request ──────────────────────╮ │
+│ │ STATUS       SUCESS                                 │ │
+│ │ STATUS CODE  200                                    │ │
+│ │ URL          https://api.open-meteo.com/v1/forecast │ │
+│ ╰─────────────────────────────────────────────────────╯ │
+│ ╭────── Response ──────╮                                │
+│ │ {                    │                                │
+│ │   "latitude": 52.096 │                                │
+│ │ }                    │                                │
+│ ╰──────────────────────╯                                │
+╰─────────────────────────────────────────────────────────╯
+
+```
+
 ## Planned features
 * Multistep support
 * assert / expect
